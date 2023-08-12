@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const URL = require('url').URL
+const dns = require('node:dns')
 
 const connectMongo = require('./src/services/connectMongo')
 const UrlShort = require('./src/models/UrlShort')
@@ -25,42 +26,33 @@ app.get('/api/hello', function(req, res) {
   res.json({ greeting: 'hello API' });
 });
 
-function validateUrl(urlString) {
-  try {
-    new URL(urlString)
-    return true
-  } catch {
-    return false
-  }
-} 
-
 app.post('/api/shorturl', async (req, res) => {
-  if(!req.body.url)
-    return res.status(400).send({ error: 'invalid url' })
+  const originalURL = req.body.url;
+  const urlObject = new URL(originalURL);
 
-  if(!validateUrl(req.body.url))
-    return res.status(400).json({ error: 'invalid url'})
+  dns.lookup(urlObject.hostname, async (err, address, family) => {
+    if (err) 
+      return res.json({ error: 'invalid url'})
+      const urlShort = UrlShort({ original: req.body.url })
+      try {
 
-  const urlShort = UrlShort({ original: req.body.url })
-
-  try {
-
-    await urlShort.save()
-    
-    res.json({ original_url: urlShort.original, short_url: urlShort.short })
-  }
-  catch(err) {
-    res.status(500).send()
-    console.error(err)
-  }
+        await urlShort.save()
+        
+        res.json({ original_url: urlShort.original, short_url: urlShort.short })
+      }
+      catch(err) {
+        res.status(500).send()
+        console.error(err)
+      }
+  })
 })
 
-app.get('/api/shorturl/:id', async (req, res) => {
-  const shortUrl = await UrlShort.find({ short: req.params.id })
+app.get('/api/shorturl/:id', async (req, res, next) => {
+  const shortUrl = await UrlShort.findOne({ short: req.params.id })
   if(!shortUrl)
     return res.status(404).send({ error: 'Short url not found' })
 
-  res.json({ original_url: shortUrl.original, short_url: shortUrl.short })
+  res.redirect(shortUrl.original)
 })
 app.listen(port, function() {
   console.log(`Listening on port ${port}`);
